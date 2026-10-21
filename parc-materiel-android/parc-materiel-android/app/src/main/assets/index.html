@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Parc matériel — démo</title>
+<style>
+:root{--bg:#f4f6f9;--fg:#141a22;--mut:#586274;--card:#fff;--ac:#1d4ed8;--bd:#d8dee8;--ok:#15803d;--wa:#b45309;--er:#b91c1c;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1218;--fg:#e8edf4;--mut:#9ba7b8;--card:#171d26;--ac:#7aa7ff;--bd:#2a3340;--ok:#4ade80;--wa:#fbbf24;--er:#f87171;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e1218;--fg:#e8edf4;--mut:#9ba7b8;--card:#171d26;--ac:#7aa7ff;--bd:#2a3340;--ok:#4ade80;--wa:#fbbf24;--er:#f87171;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+#app{max-width:640px;margin:auto;padding:14px}h1,h2{margin:.3em 0}a{color:var(--ac)}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin:10px 0;display:block;color:inherit;text-decoration:none}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+button,.btn,input,select{font:inherit;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--fg);box-sizing:border-box}
+button,.btn{background:var(--ac);color:var(--bg);border:0;text-decoration:none;cursor:pointer}
+label{display:block;margin:8px 0;color:var(--mut);font-size:.9rem}label input,label select{display:block;width:100%;margin-top:3px}
+fieldset{border:1px solid var(--bd);border-radius:10px;margin:10px 0}
+.mut{color:var(--mut)}.ph,.lb{max-width:100%;border-radius:10px}.lb{width:220px;display:block;margin:6px 0}
+.b{font-size:.75rem;padding:2px 8px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}.ok{color:var(--ok)}.wa{color:var(--wa)}.er{color:var(--er)}
+.it{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd)}.it button{padding:6px 10px}
+#ov{position:fixed;inset:0;background:var(--bg);z-index:9;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}#ov[hidden],#toast[hidden]{display:none}
+.bar{display:flex;gap:8px;align-items:center;padding:8px}.bar b{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#ov img,#ov iframe{flex:1;min-height:0;width:100%;object-fit:contain;border:0}
+#toast{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px;border-radius:10px;z-index:10}
+#pa{display:none}@media print{body>*:not(#pa){display:none!important}#pa{display:block;color:#000;background:#fff}#pa img{max-width:100%}}
+</style></head>
+<body><main id="app"></main><div id="ov" hidden></div><div id="pa"></div><div id="toast" hidden></div>
+<script>
+const $=id=>document.getElementById(id),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const D=s=>s?new Date(s+"T00:00:00").toLocaleDateString("fr-FR"):"—",nid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const toast=t=>{const x=$("toast");x.textContent=t;x.hidden=false;setTimeout(()=>x.hidden=true,3500)};
+const PER={6:"tous les 6 mois",12:"tous les ans",24:"tous les 2 ans",36:"tous les 3 ans",60:"tous les 5 ans"};
+const KINDS=["Facture d’achat","Bon de livraison","Notice d’emploi","Fiche réglementaire","Rapport de contrôle","Autre"];
+const DBP=new Promise((ok,ko)=>{const r=indexedDB.open("parc",1);r.onupgradeneeded=()=>r.result.createObjectStore("m",{keyPath:"id"});r.onsuccess=()=>ok(r.result);r.onerror=()=>ko(r.error)});
+const tx=async(mode,fn)=>{const d=await DBP;return new Promise((ok,ko)=>{const t=d.transaction("m",mode),q=fn(t.objectStore("m"));t.oncomplete=()=>ok(q&&q.result);t.onerror=()=>ko(t.error)})};
+const all=()=>tx("readonly",s=>s.getAll()),get=id=>tx("readonly",s=>s.get(id)),put=o=>tx("readwrite",s=>s.put(o)),del=id=>tx("readwrite",s=>s.delete(id));
+const shrink=f=>new Promise(ok=>{const i=new Image();i.onload=()=>{const k=Math.min(1,900/Math.max(i.width,i.height)),c=document.createElement("canvas");c.width=i.width*k;c.height=i.height*k;c.getContext("2d").drawImage(i,0,0,c.width,c.height);c.toBlob(ok,"image/jpeg",.8)};i.src=URL.createObjectURL(f)});
+const nx=m=>{if(!m.per||!m.dernier)return null;const d=new Date(m.dernier+"T00:00:00");d.setMonth(d.getMonth()+ +m.per);return d};
+const badge=m=>{if(m.reforme)return'<span class="b">Réformé</span>';const n=nx(m);if(!n)return"";const j=(n-new Date())/864e5;return j<0?'<span class="b er">Contrôle en retard</span>':j<30?'<span class="b wa">Contrôle à prévoir</span>':'<span class="b ok">Contrôle à jour</span>'};
+const evts=m=>[m.acq&&{d:m.acq,t:"📦 Acquisition"},m.service&&{d:m.service,t:"▶️ Mise en service"},...(m.rep||[]).map(r=>({d:r.d,t:"🛠️ Réparation — "+r.txt,doc:r.doc})),...(m.ctl||[]).map(c=>({d:c.d,t:"✅ Contrôle réglementaire"})),m.reforme&&{d:m.reforme,t:"📋 Réforme"+(m.motif?" — "+m.motif:"")}].filter(Boolean).sort((a,b)=>a.d<b.d?-1:1);
+
+function printHTML(h){const p=$("pa");p.innerHTML=h;Promise.all([...p.querySelectorAll("img")].map(i=>i.decode?i.decode().catch(()=>0):0)).then(()=>{try{window.print()}catch(e){toast("Impression indisponible dans cet aperçu")}})}
+function view(b,name){if(!b.type.startsWith("image/")){const r=new FileReader();r.onload=()=>Android.openPdf(r.result.split(",")[1],name);r.readAsDataURL(b);return}const u=URL.createObjectURL(b),im=b.type.startsWith("image/"),ov=$("ov");ov.hidden=false;
+ ov.innerHTML=`<div class="bar"><b>${esc(name)}</b><button id="pb">🖨️ Imprimer</button><button id="cb">✕</button></div>`+(im?`<img src="${u}">`:`<iframe src="${u}"></iframe>`);
+ $("cb").onclick=()=>{ov.hidden=true;ov.innerHTML=""};
+ $("pb").onclick=()=>{if(im)printHTML(`<img src="${u}">`);else try{ov.querySelector("iframe").contentWindow.print()}catch(e){toast("PDF : ouvrez-le dans une visionneuse pour l’imprimer")}}}
+const row=(h,doc)=>{const e=document.createElement("div");e.className="it";e.innerHTML=`<span>${h}</span>`;if(doc){const b=document.createElement("button");b.textContent="Voir";b.onclick=()=>view(doc.blob,doc.name);e.append(b)}return e};
+
+function qrCanvas(t){const rows=Android.qr(t).split("\n"),n=rows.length,k=Math.ceil(400/n),c=document.createElement("canvas");c.width=c.height=n*k;const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height);x.fillStyle="#000";rows.forEach((r,j)=>[...r].forEach((v,i)=>v=="1"&&x.fillRect(i*k,j*k,k,k)));return c}
+function label(m){return new Promise(ok=>{const box=document.createElement("div");
+ const q=qrCanvas("parcmateriel://f/"+m.id),c=document.createElement("canvas");c.width=c.height=q.width;const x=c.getContext("2d");x.drawImage(q,0,0);
+ if(!m.photo)return ok(c);const i=new Image();i.onload=()=>{const s=c.width/4,p=(c.width-s)/2,k=Math.max(s/i.width,s/i.height);
+  x.fillStyle="#fff";x.fillRect(p-8,p-8,s+16,s+16);x.save();x.beginPath();x.rect(p,p,s,s);x.clip();x.drawImage(i,p+(s-i.width*k)/2,p+(s-i.height*k)/2,i.width*k,i.height*k);x.restore();ok(c)};i.src=URL.createObjectURL(m.photo)})}
+
+async function scan(f){try{const bm=await createImageBitmap(f),k=Math.min(1,1600/Math.max(bm.width,bm.height)),c=document.createElement("canvas");c.width=bm.width*k;c.height=bm.height*k;c.getContext("2d").drawImage(bm,0,0,c.width,c.height);
+ const raw=Android.decodeQr(c.toDataURL("image/jpeg",.9)),id=raw.split("/f/")[1];id?location.hash="#/f/"+id:toast(raw?"QR code inconnu":"Aucun QR code détecté")}catch(e){toast("Scan impossible")}}
+async function seed(){try{if(localStorage.getItem("seed"))return;localStorage.setItem("seed","1")}catch(e){return}
+ await put({id:"demo",designation:"Tronçonneuse (exemple)",marque:"STIHL",modele:"MS 261",serie:"123456789",lieu:"Atelier municipal",acq:"2019-03-12",service:"2019-04-02",per:"12",dernier:"2025-11-05",ctl:[{d:"2024-11-04"},{d:"2025-11-05"}],rep:[{d:"2022-06-14",txt:"Chaîne et carburateur remplacés"}],docs:[]})}
+
+async function home(){let l=await all();if(!l.length){await seed();l=await all()}
+ $("app").innerHTML=`<h1>🔧 Parc matériel</h1><p class="mut">Les données restent sur ce téléphone.</p><div class="row"><a class="btn" href="#/new">＋ Nouveau</a><label class="btn" style="margin:0;color:var(--bg)">📷 Scanner un QR<input id="sc" type="file" accept="image/*" capture="environment" hidden></label></div>`
+ +(l.length?l.map(m=>`<a class="c" href="#/f/${m.id}"><b>${esc(m.designation)}</b> ${badge(m)}<br><small class="mut">${esc([m.marque,m.modele].filter(Boolean).join(" "))}</small></a>`).join(""):'<p class="mut">Aucun matériel pour le moment.</p>');
+ $("sc").onchange=e=>e.target.files[0]&&scan(e.target.files[0])}
+
+function form(m={}){const f=(l,n,t="text",x="")=>`<label>${l}<input type="${t}" name="${n}" value="${esc(m[n])}" ${x}></label>`;
+ $("app").innerHTML=`<a href="#/">← Liste</a><h2>${m.id?"Modifier":"Nouveau matériel"}</h2><form id="f"><label>Photo de l’appareil<input type="file" name="photo" accept="image/*" capture="environment"></label>
+ ${f("Désignation","designation","text","required")}${f("Marque","marque")}${f("Modèle","modele")}${f("N° de série","serie")}${f("Affectation / lieu","lieu")}
+ ${f("Date d’acquisition","acq","date")}${f("Date de mise en service","service","date")}${f("Date de réforme","reforme","date")}${f("Motif de réforme","motif")}
+ <fieldset><legend>Contrôle réglementaire</legend><label>Périodicité<select name="per"><option value="">Aucun</option>${Object.entries(PER).map(([k,v])=>`<option value="${k}" ${m.per==k?"selected":""}>${v}</option>`).join("")}</select></label>${f("Dernier contrôle","dernier","date")}</fieldset><button>Enregistrer</button></form>`;
+ $("f").onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.target),o={...m,id:m.id||nid()};
+  ["designation","marque","modele","serie","lieu","acq","service","reforme","motif","per","dernier"].forEach(k=>o[k]=fd.get(k));
+  const p=fd.get("photo");if(p&&p.size)o.photo=await shrink(p);
+  if(o.dernier&&!(o.ctl||[]).some(c=>c.d==o.dernier))(o.ctl=o.ctl||[]).push({d:o.dernier});
+  await put(o);location.hash="#/f/"+o.id}}
+
+function fiche(m){const ev=evts(m),n=nx(m);
+ $("app").innerHTML=`<a href="#/">← Liste</a>${m.photo?`<img class="ph" src="${URL.createObjectURL(m.photo)}">`:""}
+ <h2>${esc(m.designation)} ${badge(m)}</h2><p class="mut">${esc([m.marque,m.modele].filter(Boolean).join(" "))} · série ${esc(m.serie||"—")}<br>Affectation : ${esc(m.lieu||"—")}</p>
+ <div class="c"><b>Dates</b><br>Acquisition : ${D(m.acq)}<br>Mise en service : ${D(m.service)}<br>Réforme : ${D(m.reforme)}${m.motif?" ("+esc(m.motif)+")":""}</div>
+ <div class="c"><b>Fiche réglementaire</b><br>${m.per?`Contrôle ${PER[m.per]} · dernier : ${D(m.dernier)} · prochain : <b>${n?n.toLocaleDateString("fr-FR"):"—"}</b>`:"Aucun contrôle périodique défini"}
+ <form id="cf" class="row"><input type="date" name="d" required><button>Contrôle effectué</button></form></div>
+ <div class="c"><b>Documents</b><div id="dl"></div><form id="df"><label>Type<select name="kind">${KINDS.map(k=>`<option>${k}</option>`).join("")}</select></label><label>Fichier (PDF ou photo)<input type="file" name="file" accept="image/*,application/pdf" required></label><button>Ajouter</button></form></div>
+ <div class="c"><b>Historique</b><div id="hl"></div><form id="rf"><b>Nouvelle réparation</b><label>Date<input type="date" name="d" required></label><label>Description<input name="txt" required></label><label>Facture (facultatif)<input type="file" name="file" accept="image/*,application/pdf"></label><button>Ajouter</button></form></div>
+ <div class="c"><b>Étiquette QR</b><img id="lb" class="lb" alt="Étiquette QR"><button id="pl">🖨️ Imprimer l’étiquette</button></div>
+ <div class="row"><a class="btn" href="#/e/${m.id}">Modifier</a><button id="pf">🖨️ Imprimer la fiche</button><button id="dx">Supprimer</button></div>`;
+ (m.docs||[]).forEach(d=>$("dl").append(row(`${esc(d.kind)} — ${esc(d.name)}`,d)));
+ ev.forEach(x=>$("hl").append(row(`<b>${D(x.d)}</b> ${esc(x.t)}`,x.doc)));
+ const save=async()=>{await put(m);fiche(m)};
+ $("cf").onsubmit=e=>{e.preventDefault();const d=new FormData(e.target).get("d");(m.ctl=m.ctl||[]).push({d});if(!m.dernier||d>m.dernier)m.dernier=d;save()};
+ $("df").onsubmit=e=>{e.preventDefault();const fd=new FormData(e.target),f=fd.get("file");(m.docs=m.docs||[]).push({kind:fd.get("kind"),name:f.name,blob:f});save()};
+ $("rf").onsubmit=e=>{e.preventDefault();const fd=new FormData(e.target),f=fd.get("file");(m.rep=m.rep||[]).push({d:fd.get("d"),txt:fd.get("txt"),doc:f.size?{name:f.name,blob:f}:null});save()};
+ label(m).then(c=>{$("lb").src=c.toDataURL()});
+ $("pl").onclick=()=>printHTML(`<img src="${$("lb").src}" style="width:8cm"><p>${esc(m.designation)}</p>`);
+ $("pf").onclick=()=>printHTML(`<h2>${esc(m.designation)}</h2><p>${esc([m.marque,m.modele].filter(Boolean).join(" "))} — série ${esc(m.serie||"—")}</p><p>Acquisition : ${D(m.acq)}<br>Mise en service : ${D(m.service)}<br>Réforme : ${D(m.reforme)}</p>${m.per?`<p>Contrôle ${PER[m.per]} — prochain : ${n?n.toLocaleDateString("fr-FR"):"—"}</p>`:""}<ul>${ev.map(x=>`<li>${D(x.d)} ${esc(x.t)}</li>`).join("")}</ul><img src="${$("lb").src}" style="width:6cm">`);
+ $("dx").onclick=async()=>{const b=$("dx");if(b.dataset.s){await del(m.id);location.hash="#/"}else{b.dataset.s=1;b.textContent="Confirmer la suppression"}}}
+
+async function render(){const h=location.hash.slice(1)||"/";try{
+ if(h=="/")return await home();if(h=="/new")return form();
+ const m=h.startsWith("/e/")||h.startsWith("/f/")?await get(h.slice(3)):null;
+ if(!m)return await home();return h[1]=="e"?form(m):fiche(m)}catch(e){$("app").textContent="Le stockage n’est pas disponible dans ce navigateur."}}
+window.print=()=>Android.print();window.onhashchange=render;render();
+</script></body></html>
